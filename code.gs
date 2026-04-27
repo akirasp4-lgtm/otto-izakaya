@@ -595,6 +595,118 @@ function debugDashboard() {
 }
 
 // ============================================================
+// 売上履歴クリア（テストデータの一掃用）
+//   GASエディタから手動実行。SalesHistory のヘッダー以外を消す。
+// ============================================================
+function clearSalesNow() {
+  const sh = getSheet_(SHEET_HISTORY, HEADERS_HISTORY);
+  const last = sh.getLastRow();
+  if (last > 1) {
+    sh.getRange(2, 1, last - 1, sh.getLastColumn()).clearContent();
+    Logger.log('売上履歴を ' + (last - 1) + ' 行クリアしました');
+  } else {
+    Logger.log('売上履歴は既に空です');
+  }
+}
+
+// ============================================================
+// 売上サマリシートを生成／更新
+//   GASエディタから手動実行 → 「売上サマリ」シートが作成・更新される
+//   日別 / 週別(月曜開始) / 月別 を1枚にまとめて表示
+// ============================================================
+function refreshSalesSummary() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const histSh = getSheet_(SHEET_HISTORY, HEADERS_HISTORY);
+
+  let sh = ss.getSheetByName('売上サマリ');
+  if (!sh) sh = ss.insertSheet('売上サマリ');
+  sh.clear();
+
+  // タイトル
+  sh.getRange('A1').setValue('📊 売上サマリ')
+    .setFontSize(16).setFontWeight('bold');
+  sh.getRange('A2').setValue('最終更新: ' +
+    Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'));
+
+  const last = histSh.getLastRow();
+  if (last <= 1) {
+    sh.getRange('A4').setValue('売上データがありません');
+    Logger.log('売上履歴が空です');
+    return;
+  }
+
+  const data = histSh.getRange(2, 1, last - 1, HEADERS_HISTORY.length).getValues();
+
+  const byDay = {}, byWeek = {}, byMonth = {};
+  data.forEach(r => {
+    const dt = (r[0] instanceof Date) ? r[0] : new Date(r[0]);
+    if (isNaN(dt.getTime())) return;
+    const total = Number(r[5]) || 0;
+
+    const dayKey = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd');
+    byDay[dayKey] = (byDay[dayKey] || 0) + total;
+
+    // 月曜起算の週キー
+    const monday = new Date(dt);
+    monday.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    const weekKey = Utilities.formatDate(monday, 'Asia/Tokyo', 'yyyy-MM-dd') + '週';
+    byWeek[weekKey] = (byWeek[weekKey] || 0) + total;
+
+    const monthKey = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM');
+    byMonth[monthKey] = (byMonth[monthKey] || 0) + total;
+  });
+
+  // 日別 (A列)
+  sh.getRange('A4').setValue('📅 日別')
+    .setFontSize(12).setFontWeight('bold').setBackground('#fff3cd');
+  sh.getRange('A5:B5').setValues([['日付', '売上(税込)']])
+    .setFontWeight('bold').setBackground('#f8f9fa');
+  const dayKeys = Object.keys(byDay).sort().reverse();
+  if (dayKeys.length) {
+    sh.getRange(6, 1, dayKeys.length, 2).setValues(dayKeys.map(k => [k, byDay[k]]));
+    sh.getRange(6, 2, dayKeys.length, 1).setNumberFormat('¥#,##0');
+  }
+
+  // 週別 (D列)
+  sh.getRange('D4').setValue('📊 週別(月曜開始)')
+    .setFontSize(12).setFontWeight('bold').setBackground('#cfe2ff');
+  sh.getRange('D5:E5').setValues([['週', '売上(税込)']])
+    .setFontWeight('bold').setBackground('#f8f9fa');
+  const weekKeys = Object.keys(byWeek).sort().reverse();
+  if (weekKeys.length) {
+    sh.getRange(6, 4, weekKeys.length, 2).setValues(weekKeys.map(k => [k, byWeek[k]]));
+    sh.getRange(6, 5, weekKeys.length, 1).setNumberFormat('¥#,##0');
+  }
+
+  // 月別 (G列)
+  sh.getRange('G4').setValue('📈 月別')
+    .setFontSize(12).setFontWeight('bold').setBackground('#d1e7dd');
+  sh.getRange('G5:H5').setValues([['月', '売上(税込)']])
+    .setFontWeight('bold').setBackground('#f8f9fa');
+  const monthKeys = Object.keys(byMonth).sort().reverse();
+  if (monthKeys.length) {
+    sh.getRange(6, 7, monthKeys.length, 2).setValues(monthKeys.map(k => [k, byMonth[k]]));
+    sh.getRange(6, 8, monthKeys.length, 1).setNumberFormat('¥#,##0');
+  }
+
+  // 列幅調整
+  sh.setColumnWidth(1, 120);
+  sh.setColumnWidth(2, 110);
+  sh.setColumnWidth(3, 20);
+  sh.setColumnWidth(4, 130);
+  sh.setColumnWidth(5, 110);
+  sh.setColumnWidth(6, 20);
+  sh.setColumnWidth(7, 90);
+  sh.setColumnWidth(8, 110);
+
+  sh.setFrozenRows(5);
+
+  Logger.log('売上サマリを更新しました（日 ' + dayKeys.length +
+             ' / 週 ' + weekKeys.length + ' / 月 ' + monthKeys.length + ' 行）');
+}
+
+// ============================================================
 // 飲料メニュー一括インポート（OTTO飲料メニュー編集用.pptx 準拠）
 //   GASエディタから 1回だけ実行してください。
 //   既存の Menu シートの中身を全置き換えします（お通しの値段は引き継ぎ）。
