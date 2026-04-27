@@ -78,6 +78,7 @@ const API_ACTIONS_ = {
   openSeat:        function (seatId, guests) { return openSeat(seatId, guests); },
   addOrder:        function (seatId, p, price, qty) { return addOrder(seatId, p, price, qty); },
   removeOrderItem: function (row) { return removeOrderItem(row); },
+  updateOrderQty:  function (row, qty) { return updateOrderQty(row, qty); },
   groupSeats:      function (ids) { return groupSeats(ids); },
   ungroupSeat:     function (seatId) { return ungroupSeat(seatId); },
   checkout:        function (seatId) { return checkout(seatId); }
@@ -301,8 +302,44 @@ function _addOrderInternal(seatId, product, price, qty) {
   const leader = getLeaderOf_(seatId);
   if (findSeatStateRow_(leader) < 0) throw new Error('席が開いていません');
   const sh = getSheet_(SHEET_ACTIVE, HEADERS_ACTIVE);
+
+  // 同一席・同一商品・同一単価の既存行があれば数量をマージ
+  const existing = getActiveOrders_().find(o =>
+    o.seatId === leader &&
+    o.product === product &&
+    Number(o.price) === Number(price)
+  );
+  if (existing) {
+    const newQty = existing.qty + qty;
+    const newSubtotal = price * newQty;
+    sh.getRange(existing.row, 4).setValue(newQty);     // 数量列
+    sh.getRange(existing.row, 5).setValue(newSubtotal); // 小計列
+    return;
+  }
   const subtotal = price * qty;
   sh.appendRow([leader, product, price, qty, subtotal, new Date()]);
+}
+
+/** 明細の数量を変更（0以下なら削除） */
+function updateOrderQty(rowNumber, newQty) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    const sh = getSheet_(SHEET_ACTIVE, HEADERS_ACTIVE);
+    const n = Number(rowNumber);
+    if (n < 2 || n > sh.getLastRow()) throw new Error('無効な行番号');
+    newQty = Number(newQty) || 0;
+    if (newQty <= 0) {
+      sh.deleteRow(n);
+    } else {
+      const price = Number(sh.getRange(n, 3).getValue()) || 0;
+      sh.getRange(n, 4).setValue(newQty);
+      sh.getRange(n, 5).setValue(price * newQty);
+    }
+    return getDashboard();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** 注文追加 */

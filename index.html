@@ -79,9 +79,10 @@
       font-size: 0.95rem;
     }
     .bill-row .name { flex: 1; min-width: 0; }
-    .bill-row .qty  { width: 50px; text-align: center; color:#6c757d; }
-    .bill-row .amt  { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
-    .bill-row .del  { margin-left: 6px; color: #dc3545; cursor: pointer; }
+    .bill-row .qty  { width: 40px; text-align: center; color:#6c757d; font-weight: 700; }
+    .bill-row .qty-dec, .bill-row .qty-inc { line-height: 1; min-width: 28px; }
+    .bill-row .amt  { width: 80px; text-align: right; font-variant-numeric: tabular-nums; margin-left: 4px; }
+    .bill-row .del  { margin-left: 8px; color: #dc3545; cursor: pointer; }
 
     .total-line { font-size: 1.4rem; font-weight: 800; color: #0d6efd; }
 
@@ -225,6 +226,38 @@
   </div>
 </div>
 
+<!-- 数量入力モーダル -->
+<div class="modal fade" id="qtyModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyModalTitle">商品名</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div class="text-muted small mb-2" id="qtyModalPrice">¥0 / 個</div>
+        <div class="d-flex justify-content-center align-items-center gap-3 my-2">
+          <button class="btn btn-outline-secondary btn-lg" id="qtyMinus" style="width:52px;">−</button>
+          <div class="display-4 fw-bold" id="qtyValue" style="min-width:80px;">1</div>
+          <button class="btn btn-outline-secondary btn-lg" id="qtyPlus" style="width:52px;">+</button>
+        </div>
+        <div class="d-flex flex-wrap gap-1 justify-content-center mt-2">
+          <button class="btn btn-sm btn-outline-primary qty-quick" data-qty="1">1</button>
+          <button class="btn btn-sm btn-outline-primary qty-quick" data-qty="2">2</button>
+          <button class="btn btn-sm btn-outline-primary qty-quick" data-qty="3">3</button>
+          <button class="btn btn-sm btn-outline-primary qty-quick" data-qty="5">5</button>
+          <button class="btn btn-sm btn-outline-primary qty-quick" data-qty="10">10</button>
+        </div>
+        <div class="mt-2 fw-bold" id="qtySubtotal">小計 ¥0</div>
+      </div>
+      <div class="modal-footer p-2">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">キャンセル</button>
+        <button class="btn btn-primary" id="btnQtyConfirm">追加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 会計完了モーダル -->
 <div class="modal fade" id="resultModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -268,6 +301,7 @@ let GROUP_SELECTED = [];
 const openModal    = new bootstrap.Modal(document.getElementById('openModal'));
 const orderModal   = new bootstrap.Modal(document.getElementById('orderModal'));
 const resultModal  = new bootstrap.Modal(document.getElementById('resultModal'));
+const qtyModal     = new bootstrap.Modal(document.getElementById('qtyModal'));
 
 // ===== ユーティリティ =====
 function fmt(n) { return '¥' + (Number(n) || 0).toLocaleString(); }
@@ -483,15 +517,34 @@ function renderBill() {
   if (!CURRENT_BILL.items.length) {
     list.innerHTML = '<div class="text-center text-muted py-3 small">注文はまだありません</div>';
   } else {
-    // 同じ商品＆同じ単価をまとめて表示（取消は1行ずつ）
     CURRENT_BILL.items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'bill-row';
       row.innerHTML =
         '<div class="name">' + item.product + '</div>' +
+        '<button class="btn btn-sm btn-outline-secondary qty-dec" style="padding:0 8px;">−</button>' +
         '<div class="qty">×' + item.qty + '</div>' +
+        '<button class="btn btn-sm btn-outline-secondary qty-inc" style="padding:0 8px;">+</button>' +
         '<div class="amt">' + fmt(item.subtotal) + '</div>' +
         '<div class="del" title="取消">✕</div>';
+      row.querySelector('.qty-dec').onclick = () => {
+        const newQty = item.qty - 1;
+        if (newQty <= 0) {
+          if (!confirm(item.product + ' を取消しますか？')) return;
+        }
+        call('updateOrderQty', [item.row, newQty], d => {
+          DASHBOARD = d;
+          render();
+          loadBill();
+        });
+      };
+      row.querySelector('.qty-inc').onclick = () => {
+        call('updateOrderQty', [item.row, item.qty + 1], d => {
+          DASHBOARD = d;
+          render();
+          loadBill();
+        });
+      };
       row.querySelector('.del').onclick = () => {
         if (!confirm(item.product + ' を取消しますか？')) return;
         call('removeOrderItem', [item.row], d => {
@@ -511,15 +564,42 @@ function renderBill() {
     CURRENT_BILL.members.length > 1 ? '🔗 ' + CURRENT_BILL.membersLabel : '';
 }
 
+// メニュータップ → 数量入力モーダル
+let pendingMenuItem = null;
 function addOrder(menuItem) {
+  pendingMenuItem = menuItem;
+  document.getElementById('qtyModalTitle').textContent = menuItem.name;
+  document.getElementById('qtyModalPrice').textContent = fmt(menuItem.price) + ' / 個';
+  setQty(1);
+  qtyModal.show();
+}
+function setQty(n) {
+  n = Math.max(1, Math.min(99, Number(n) || 1));
+  document.getElementById('qtyValue').textContent = n;
+  if (pendingMenuItem) {
+    document.getElementById('qtySubtotal').textContent =
+      '小計 ' + fmt(pendingMenuItem.price * n);
+  }
+}
+document.getElementById('qtyMinus').onclick = () =>
+  setQty(Number(document.getElementById('qtyValue').textContent) - 1);
+document.getElementById('qtyPlus').onclick  = () =>
+  setQty(Number(document.getElementById('qtyValue').textContent) + 1);
+document.querySelectorAll('.qty-quick').forEach(b => {
+  b.onclick = () => setQty(b.dataset.qty);
+});
+document.getElementById('btnQtyConfirm').onclick = () => {
+  if (!pendingMenuItem || !CURRENT_SEAT) return;
+  const qty = Number(document.getElementById('qtyValue').textContent) || 1;
+  qtyModal.hide();
   call('addOrder',
-    [CURRENT_SEAT.seatId, menuItem.name, menuItem.price, 1],
+    [CURRENT_SEAT.seatId, pendingMenuItem.name, pendingMenuItem.price, qty],
     d => {
       DASHBOARD = d;
       render();
       loadBill();
     });
-}
+};
 
 // ===== 会計 =====
 document.getElementById('btnCheckout').onclick = () => {
