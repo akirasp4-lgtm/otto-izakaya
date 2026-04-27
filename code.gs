@@ -37,19 +37,51 @@ const TABLE_SEATS   = ['TA','TB'];
 const ALL_SEATS     = COUNTER_SEATS.concat(TABLE_SEATS);
 
 // ============================================================
-// HTTP エントリーポイント
+// HTTP エントリーポイント (JSON API)
+//   GET  ?action=<fn>&payload=<JSON配列>
+//   POST  body: { action, args }
 // ============================================================
-function doGet() {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .setTitle('居酒屋オーダー管理')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+function doGet(e) {
+  return apiHandle_(e && e.parameter ? e.parameter.action : null,
+                    e && e.parameter ? e.parameter.payload : null);
 }
 
-function include(fileName) {
-  return HtmlService.createHtmlOutputFromFile(fileName).getContent();
+function doPost(e) {
+  let body = {};
+  try { body = JSON.parse(e.postData.contents || '{}'); } catch (_) {}
+  return apiHandle_(body.action, JSON.stringify(body.args || []));
 }
+
+function apiHandle_(action, payload) {
+  try {
+    if (!action) throw new Error('action パラメータが必要です');
+    const fn = API_ACTIONS_[action];
+    if (!fn) throw new Error('未定義のaction: ' + action);
+    const args = payload ? JSON.parse(payload) : [];
+    const data = fn.apply(null, Array.isArray(args) ? args : [args]);
+    return jsonResponse_({ ok: true, data: data });
+  } catch (err) {
+    return jsonResponse_({ ok: false, error: String((err && err.message) || err) });
+  }
+}
+
+function jsonResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// クライアントから呼べるAPI一覧（関数定義は下方）
+const API_ACTIONS_ = {
+  getDashboard:    function () { return getDashboard(); },
+  getSeatBill:     function (seatId) { return getSeatBill(seatId); },
+  openSeat:        function (seatId, guests) { return openSeat(seatId, guests); },
+  addOrder:        function (seatId, p, price, qty) { return addOrder(seatId, p, price, qty); },
+  removeOrderItem: function (row) { return removeOrderItem(row); },
+  groupSeats:      function (ids) { return groupSeats(ids); },
+  ungroupSeat:     function (seatId) { return ungroupSeat(seatId); },
+  checkout:        function (seatId) { return checkout(seatId); }
+};
 
 // ============================================================
 // シート初期化

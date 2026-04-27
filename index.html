@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>居酒屋オーダー管理</title>
@@ -253,6 +252,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// ===== 設定 =====
+// GAS ウェブアプリのデプロイURL（/exec で終わるやつ）
+// 「アクセスできるユーザー: 全員」でデプロイすること
+const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbz1W9THFBQZgHslgu73BzfRvc3a-A63GqdPub0oWDhNdOQ3DObasLrU3q7TO3HDelLS/exec';
+
 // ===== 状態 =====
 let DASHBOARD = null;
 let CURRENT_SEAT = null;     // 注文モーダル対象
@@ -269,12 +273,25 @@ const resultModal  = new bootstrap.Modal(document.getElementById('resultModal'))
 function fmt(n) { return '¥' + (Number(n) || 0).toLocaleString(); }
 function showLoading(b) { document.getElementById('loading').classList.toggle('d-none', !b); }
 
-function call(fn, args, onSuccess) {
+// fetch ベースの API 呼び出し
+// 第3引数 onSuccess は従来互換のためコールバック形式
+async function call(fn, args, onSuccess) {
   showLoading(true);
-  let runner = google.script.run
-    .withSuccessHandler(d => { showLoading(false); if (onSuccess) onSuccess(d); })
-    .withFailureHandler(e => { showLoading(false); alert('エラー: ' + (e.message || e)); });
-  runner[fn].apply(runner, args || []);
+  try {
+    const url = GAS_API_URL +
+      '?action=' + encodeURIComponent(fn) +
+      '&payload=' + encodeURIComponent(JSON.stringify(args || []));
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'サーバーエラー');
+    if (onSuccess) onSuccess(json.data);
+  } catch (e) {
+    console.error('[call] error', fn, args, e);
+    alert('エラー: ' + (e.message || e));
+  } finally {
+    showLoading(false);
+  }
 }
 
 // ===== 初期表示 =====
