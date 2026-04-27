@@ -189,8 +189,14 @@
         <!-- 伝票エリア -->
         <div class="card mb-2">
           <div class="card-body p-2">
-            <div class="d-flex justify-content-between small text-muted mb-1">
-              <span id="orderModalGuests">— 名</span>
+            <div class="d-flex justify-content-between align-items-center small text-muted mb-1">
+              <div class="d-flex align-items-center gap-1">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        id="btnGuestsMinus" title="人数−1">−</button>
+                <span id="orderModalGuests" class="fw-bold">— 名</span>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        id="btnGuestsPlus" title="人数+1">+</button>
+              </div>
               <span id="orderModalGroup"></span>
             </div>
             <div class="bill-list" id="billList"></div>
@@ -344,9 +350,10 @@ function render() {
   counter.innerHTML = '';
   table.innerHTML = '';
 
+  const tableCount = DASHBOARD.seats.filter(x => !x.isCounter).length;
   DASHBOARD.seats.forEach(s => {
     const col = document.createElement('div');
-    col.className = s.isCounter ? 'col-3' : 'col-6';
+    col.className = s.isCounter ? 'col-3' : (tableCount === 1 ? 'col-12' : 'col-6');
 
     let cls = 'seat-empty';
     let amount = '空席';
@@ -648,6 +655,28 @@ document.getElementById('btnConfirmGroup').onclick = () => {
     GROUP_MODE = false;
     GROUP_SELECTED = [];
     render();
+  });
+};
+
+// ===== 人数の±編集 =====
+document.getElementById('btnGuestsMinus').onclick = () => {
+  if (!CURRENT_BILL || !CURRENT_SEAT) return;
+  const next = (CURRENT_BILL.guests || 1) - 1;
+  if (next < 1) { alert('人数は1名以上'); return; }
+  call('updateGuests', [CURRENT_SEAT.seatId, next], d => {
+    DASHBOARD = d;
+    render();
+    loadBill();
+  });
+};
+document.getElementById('btnGuestsPlus').onclick = () => {
+  if (!CURRENT_BILL || !CURRENT_SEAT) return;
+  const next = (CURRENT_BILL.guests || 0) + 1;
+  if (next > 30) { alert('人数は30名以下'); return; }
+  call('updateGuests', [CURRENT_SEAT.seatId, next], d => {
+    DASHBOARD = d;
+    render();
+    loadBill();
   });
 };
 

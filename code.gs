@@ -33,7 +33,7 @@ const OTOSHI_NAME = 'お通し';
 const OTOSHI_DEFAULT_PRICE = 500;
 
 const COUNTER_SEATS = ['C1','C2','C3','C4','C5','C6','C7','C8'];
-const TABLE_SEATS   = ['TA','TB'];
+const TABLE_SEATS   = ['T'];
 const ALL_SEATS     = COUNTER_SEATS.concat(TABLE_SEATS);
 
 // ============================================================
@@ -79,6 +79,7 @@ const API_ACTIONS_ = {
   addOrder:        function (seatId, p, price, qty) { return addOrder(seatId, p, price, qty); },
   removeOrderItem: function (row) { return removeOrderItem(row); },
   updateOrderQty:  function (row, qty) { return updateOrderQty(row, qty); },
+  updateGuests:    function (seatId, n) { return updateGuests(seatId, n); },
   groupSeats:      function (ids) { return groupSeats(ids); },
   ungroupSeat:     function (seatId) { return ungroupSeat(seatId); },
   checkout:        function (seatId) { return checkout(seatId); }
@@ -318,6 +319,34 @@ function _addOrderInternal(seatId, product, price, qty) {
   }
   const subtotal = price * qty;
   sh.appendRow([leader, product, price, qty, subtotal, new Date()]);
+}
+
+/** 客の人数を変更（リーダー席に対して反映） */
+function updateGuests(seatId, newGuests) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    seatId = String(seatId);
+    newGuests = Number(newGuests) || 0;
+    if (newGuests < 1) throw new Error('人数は1名以上');
+    if (newGuests > 30) throw new Error('人数は30名以下');
+
+    const sh = getSheet_(SHEET_SEATS, HEADERS_SEATS);
+    const states = getSeatStates_();
+    const leader = getLeaderOf_(seatId, states);
+    const leaderState = states.find(s => s.seatId === leader);
+    if (!leaderState) throw new Error('席が開いていません');
+
+    // グループ席の場合、メンバー側の人数を 0 にしてリーダーに集約
+    states
+      .filter(s => s.groupLeader === leader && s.seatId !== leader)
+      .forEach(s => sh.getRange(s.row, 3).setValue(0));
+
+    sh.getRange(leaderState.row, 3).setValue(newGuests);
+    return getDashboard();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** 明細の数量を変更（0以下なら削除） */
@@ -577,8 +606,9 @@ function getSalesSummary_() {
 function seatLabel_(id) {
   if (!id) return '';
   if (id.charAt(0) === 'C') return 'カウンター' + id.substring(1);
-  if (id === 'TA') return 'A卓';
-  if (id === 'TB') return 'B卓';
+  if (id === 'T')  return 'テーブル';
+  if (id === 'TA') return 'A卓'; // 旧データ互換
+  if (id === 'TB') return 'B卓'; // 旧データ互換
   return id;
 }
 
@@ -813,6 +843,10 @@ function importDrinkMenu() {
     ['ウーロン茶',         250, 'ソフトドリンク'],
     ['緑茶',               250, 'ソフトドリンク'],
     ['梅昆布',             250, 'ソフトドリンク'],
+
+    // ワイン
+    ['白ワイン',           4000, 'ワイン'],
+    ['赤ワイン',           4000, 'ワイン'],
 
     // セット
     ['せんべろセット',     1000, 'セット']
