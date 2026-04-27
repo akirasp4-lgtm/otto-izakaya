@@ -613,6 +613,58 @@ function seatLabel_(id) {
 }
 
 // ============================================================
+// スプレッドシート起動時のカスタムメニュー
+//   開いた時に「📊 オットー」メニューが上部に追加される
+// ============================================================
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('📊 オットー')
+    .addItem('🔄 売上サマリを更新',     'refreshSalesSummary')
+    .addSeparator()
+    .addItem('🍶 飲料メニュー再投入',   'importDrinkMenu')
+    .addItem('🍢 食事メニュー再投入',   'importFoodMenu')
+    .addItem('📋 全メニュー再投入',     'importAllMenu')
+    .addSeparator()
+    .addItem('🗑 売上履歴クリア',       'clearSalesNow')
+    .addSeparator()
+    .addItem('⏰ 毎日2時の自動更新ON',  'setupDailyTrigger')
+    .addItem('⛔ 自動更新OFF',          'removeDailyTrigger')
+    .addToUi();
+}
+
+// ============================================================
+// 毎日2:00に refreshSalesSummary を自動実行するトリガー設定
+// ============================================================
+function setupDailyTrigger() {
+  // 既存の同名トリガーを削除（重複防止）
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'refreshSalesSummary') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  ScriptApp.newTrigger('refreshSalesSummary')
+    .timeBased()
+    .atHour(2)
+    .everyDays(1)
+    .inTimezone('Asia/Tokyo')
+    .create();
+  SpreadsheetApp.getActive().toast('毎日 2:00 に売上サマリを自動更新します', '✅ 設定完了', 5);
+  Logger.log('毎日2時の自動更新を設定しました');
+}
+
+function removeDailyTrigger() {
+  let count = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'refreshSalesSummary') {
+      ScriptApp.deleteTrigger(t);
+      count++;
+    }
+  });
+  SpreadsheetApp.getActive().toast(count + ' 個のトリガーを削除しました', '⛔ 自動更新OFF', 5);
+  Logger.log(count + ' 個のトリガーを削除しました');
+}
+
+// ============================================================
 // 動作確認用（GASエディタから手動実行）
 // ============================================================
 function setupSheets() {
