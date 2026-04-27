@@ -1,0 +1,19 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude Code local settings
+.claude/
+
+# clasp (Google Apps Script)
+.clasp.json
+.clasprc.json
+
+# Node (将来用)
+node_modules/
