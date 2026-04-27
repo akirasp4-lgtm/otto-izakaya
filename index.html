@@ -654,8 +654,23 @@ document.getElementById('btnConfirmGroup').onclick = () => {
 // ===== 更新 =====
 document.getElementById('btnRefresh').onclick = init;
 
-// 自動リロード（30秒に1回）
-setInterval(() => { if (!GROUP_MODE) init(); }, 30000);
+// バックグラウンドの静かな自動更新（60秒間隔・モーダル中はスキップ・ローディング非表示）
+async function silentRefresh() {
+  // モーダルが開いている／グループ化モード中はスキップ
+  if (GROUP_MODE) return;
+  if (document.querySelector('.modal.show')) return;
+  try {
+    const url = GAS_API_URL + '?action=getDashboard&payload=%5B%5D';
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json && json.ok && json.data) {
+      DASHBOARD = json.data;
+      render();
+    }
+  } catch (_) { /* 黙って失敗・次回再試行 */ }
+}
+setInterval(silentRefresh, 60000);
 
 // 起動
 init();
